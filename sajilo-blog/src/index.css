@@ -1,11 +1,89 @@
-@import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&family=Outfit:wght@100..900&display=swap');
-*{
+@import "tailwindcss";
+
+* {
   font-family: "Outfit", sans-serif;
 }
-::-webkit-scrollbar{
-  display:none;
+
+::-webkit-scrollbar {
+  display: none;
 }
-@theme{
+
+@theme {
   --color-primary: #1E293B;
+}
+
+/* Rich Text Article Styles */
+.rich-text {
+  font-size: 1.05rem;
+  line-height: 1.8;
+  color: #374151;
+}
+
+.rich-text p {
+  margin-bottom: 1.25rem;
+}
+
+.rich-text h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 2rem 0 1rem 0;
+  line-height: 1.3;
+}
+
+.rich-text h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 1.75rem 0 0.75rem 0;
+  line-height: 1.35;
+}
+
+.rich-text h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 1.5rem 0 0.5rem 0;
+}
+
+.rich-text h4, .rich-text h5, .rich-text h6 {
+  font-weight: 600;
+  color: #374151;
+  margin: 1.25rem 0 0.5rem 0;
+}
+
+.rich-text strong {
+  font-weight: 700;
+  color: #111827;
+}
+
+.rich-text ol {
+  margin-left: 1.5rem;
+  list-style-type: decimal;
+  margin-bottom: 1.25rem;
+}
+
+.rich-text ul {
+  margin-left: 1.5rem;
+  list-style-type: disc;
+  margin-bottom: 1.25rem;
+}
+
+.rich-text li {
+  margin-bottom: 0.5rem;
+}
+
+.rich-text a {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.rich-text blockquote {
+  border-left: 4px solid #3b82f6;
+  padding-left: 1rem;
+  font-style: italic;
+  color: #4b5563;
+  margin: 1.25rem 0;
 }
