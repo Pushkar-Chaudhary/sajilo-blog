@@ -14,9 +14,11 @@ const Navbar = ({ onOpenAuth, user, onLogout, onOpenAiStudio }) => {
         {/* Logo & Brand */}
         <div className="flex items-center gap-8">
           <Link to="/" className="flex shrink-0 items-center gap-2.5 group">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white font-extrabold text-lg shadow-sm">
-              S
-            </div>
+            <img
+              src="/favicon.svg"
+              alt="Sajilo Blog Logo"
+              className="h-9 w-9 object-contain group-hover:scale-105 transition-transform"
+            />
             <span className="text-xl font-extrabold tracking-tight text-zinc-900">
               Sajilo <span className="font-semibold text-zinc-500">Blog</span>
             </span>
