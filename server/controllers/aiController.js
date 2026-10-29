@@ -1,166 +1,55 @@
-import * as gemini from '../services/geminiService.js';
 import { config } from '../config/config.js';
-import AIUsage from '../models/AIUsage.js';
+import { generateArticleDraft, rewriteSelectedText } from '../services/geminiService.js';
 
-const AI_DAILY_LIMIT = 50; // requests per user per day
+function respondWithAIError(error, res) {
+  const status = error.status || error.statusCode;
+  if (status === 400) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+  if (status === 429) {
+    return res.status(429).json({ success: false, message: 'AI request limit reached. Please try again later.' });
+  }
+  if (status === 401 || status === 403) {
+    console.error('[AI] Gemini credentials were rejected.');
+    return res.status(503).json({ success: false, message: 'AI is not available. Check the server Gemini configuration.' });
+  }
+  if (status === 404) {
+    console.error('[AI] The configured Gemini model is unavailable.');
+    return res.status(503).json({ success: false, message: 'The configured Gemini model is unavailable. Check GEMINI_MODEL.' });
+  }
 
-async function checkRateLimit(userId) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const count = await AIUsage.countDocuments({
-    user: userId,
-    createdAt: { $gte: today },
-    status: 'success',
+  console.error(`[AI] Gemini request failed (${error.name || 'Error'}${status ? `, status ${status}` : ''}).`);
+  const responseStatus = status === 503 ? 503 : 502;
+  return res.status(responseStatus).json({
+    success: false,
+    message: responseStatus === 503
+      ? 'Gemini is temporarily unavailable. Please try again shortly.'
+      : 'The AI service could not complete this request. Please try again.',
   });
-  return count >= AI_DAILY_LIMIT;
-}
-
-function handleAIError(error, res) {
-  console.error('[AI] Error:', error.message);
-
-  if (error.message.includes('API key')) {
-    return res.status(503).json({
-      success: false,
-      message: 'AI features are not configured. Please contact the administrator.',
-    });
-  }
-  if (error.message.includes('quota') || error.message.includes('RESOURCE_EXHAUSTED')) {
-    return res.status(429).json({ success: false, message: 'AI quota exceeded. Please try again later.' });
-  }
-  if (error.message.includes('not found') || error.message.includes('NOT_FOUND')) {
-    return res.status(503).json({ success: false, message: 'AI model is temporarily unavailable.' });
-  }
-  return res.status(500).json({ success: false, message: 'AI request failed. Please try again.' });
 }
 
 export async function generateArticle(req, res) {
   if (!config.geminiApiKey) {
-    return res.status(503).json({ success: false, message: 'AI features are not configured.' });
-  }
-  if (await checkRateLimit(req.user._id)) {
-    return res.status(429).json({ success: false, message: 'Daily AI usage limit reached. Try again tomorrow.' });
+    return res.status(503).json({ success: false, message: 'AI is not configured on the server. Set GEMINI_API_KEY.' });
   }
 
   try {
-    const result = await gemini.generateArticle(req.body, req.user._id);
-    res.json({ success: true, result });
+    const result = await generateArticleDraft(req.body);
+    return res.json({ success: true, result });
   } catch (error) {
-    handleAIError(error, res);
+    return respondWithAIError(error, res);
   }
 }
 
 export async function rewriteText(req, res) {
   if (!config.geminiApiKey) {
-    return res.status(503).json({ success: false, message: 'AI features are not configured.' });
-  }
-  if (await checkRateLimit(req.user._id)) {
-    return res.status(429).json({ success: false, message: 'Daily AI usage limit reached. Try again tomorrow.' });
+    return res.status(503).json({ success: false, message: 'AI is not configured on the server. Set GEMINI_API_KEY.' });
   }
 
   try {
-    const result = await gemini.rewriteText(req.body, req.user._id);
-    res.json({ success: true, result });
+    const result = await rewriteSelectedText(req.body);
+    return res.json({ success: true, result });
   } catch (error) {
-    handleAIError(error, res);
-  }
-}
-
-export async function summarizeArticle(req, res) {
-  if (!config.geminiApiKey) {
-    return res.status(503).json({ success: false, message: 'AI features are not configured.' });
-  }
-  if (await checkRateLimit(req.user._id)) {
-    return res.status(429).json({ success: false, message: 'Daily AI usage limit reached. Try again tomorrow.' });
-  }
-
-  try {
-    const { content } = req.body;
-    const result = await gemini.summarizeArticle(content, req.user._id);
-    res.json({ success: true, result });
-  } catch (error) {
-    handleAIError(error, res);
-  }
-}
-
-export async function generateTitles(req, res) {
-  if (!config.geminiApiKey) {
-    return res.status(503).json({ success: false, message: 'AI features are not configured.' });
-  }
-  if (await checkRateLimit(req.user._id)) {
-    return res.status(429).json({ success: false, message: 'Daily AI usage limit reached. Try again tomorrow.' });
-  }
-
-  try {
-    const { content } = req.body;
-    const result = await gemini.generateTitles(content, req.user._id);
-    res.json({ success: true, result });
-  } catch (error) {
-    handleAIError(error, res);
-  }
-}
-
-export async function generateOutline(req, res) {
-  if (!config.geminiApiKey) {
-    return res.status(503).json({ success: false, message: 'AI features are not configured.' });
-  }
-  if (await checkRateLimit(req.user._id)) {
-    return res.status(429).json({ success: false, message: 'Daily AI usage limit reached. Try again tomorrow.' });
-  }
-
-  try {
-    const { topic } = req.body;
-    const result = await gemini.generateOutline(topic, req.user._id);
-    res.json({ success: true, result });
-  } catch (error) {
-    handleAIError(error, res);
-  }
-}
-
-export async function generateSEO(req, res) {
-  if (!config.geminiApiKey) {
-    return res.status(503).json({ success: false, message: 'AI features are not configured.' });
-  }
-  if (await checkRateLimit(req.user._id)) {
-    return res.status(429).json({ success: false, message: 'Daily AI usage limit reached. Try again tomorrow.' });
-  }
-
-  try {
-    const result = await gemini.generateSEO(req.body, req.user._id);
-    res.json({ success: true, result });
-  } catch (error) {
-    handleAIError(error, res);
-  }
-}
-
-export async function suggestTags(req, res) {
-  if (!config.geminiApiKey) {
-    return res.status(503).json({ success: false, message: 'AI features are not configured.' });
-  }
-  if (await checkRateLimit(req.user._id)) {
-    return res.status(429).json({ success: false, message: 'Daily AI usage limit reached. Try again tomorrow.' });
-  }
-
-  try {
-    const { content } = req.body;
-    const result = await gemini.suggestTags(content, req.user._id);
-    res.json({ success: true, result });
-  } catch (error) {
-    handleAIError(error, res);
-  }
-}
-
-export async function chatWithAssistant(req, res) {
-  if (!config.geminiApiKey) {
-    return res.status(503).json({ success: false, message: 'AI features are not configured.' });
-  }
-  if (await checkRateLimit(req.user._id)) {
-    return res.status(429).json({ success: false, message: 'Daily AI usage limit reached. Try again tomorrow.' });
-  }
-
-  try {
-    const result = await gemini.chatWithAssistant(req.body, req.user._id);
-    res.json({ success: true, result });
-  } catch (error) {
-    handleAIError(error, res);
+    return respondWithAIError(error, res);
   }
 }

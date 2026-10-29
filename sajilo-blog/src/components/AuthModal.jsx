@@ -1,35 +1,37 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import toast from 'react-hot-toast'
+import { loginApi, registerApi } from '../services/api'
 
 const AuthModal = ({ isOpen, onClose, initialMode = 'login', onLoginSuccess }) => {
   const [mode, setMode] = useState(initialMode)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
 
   if (!isOpen) return null
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!email || !password) {
-      toast.error('Please enter all required fields')
+    if (!email.trim() || !password || (mode === 'signup' && !name.trim())) {
+      toast.error('Please complete all required fields')
       return
     }
 
     setLoading(true)
-    setTimeout(() => {
-      setLoading(false)
-      const user = {
-        name: mode === 'signup' ? name || 'Reader' : 'Demo User',
-        email,
-      }
-      if (onLoginSuccess) {
-        onLoginSuccess(user)
-      }
+    try {
+      const response = mode === 'signup'
+        ? await registerApi({ name: name.trim(), email: email.trim(), password })
+        : await loginApi({ email: email.trim(), password })
+      onLoginSuccess(response.user)
       toast.success(mode === 'signup' ? 'Account created successfully!' : 'Welcome back!')
       onClose()
-    }, 700)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Could not authenticate. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -127,14 +129,26 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login', onLoginSuccess }) =
             <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
               Password
             </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full rounded-xl border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full rounded-xl border border-gray-300 px-3.5 py-2.5 pr-16 text-sm text-gray-900 focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((visible) => !visible)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+                className="absolute inset-y-0 right-3 text-xs font-semibold text-gray-600 hover:text-gray-900"
+              >
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
           </div>
 
           <button
@@ -142,7 +156,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login', onLoginSuccess }) =
             disabled={loading}
             className="w-full mt-2 rounded-xl bg-gray-900 py-3 text-sm font-semibold text-white shadow-md hover:bg-gray-800 transition-colors disabled:opacity-50"
           >
-            {loading ? 'Please wait...' : mode === 'signup' ? 'Get Started' : 'Sign In'}
+            {loading ? 'Please wait...' : mode === 'signup' ? 'Create Account' : 'Sign In'}
           </button>
         </form>
       </div>

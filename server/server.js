@@ -3,6 +3,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
+import mongoose from 'mongoose';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -27,25 +28,49 @@ const __dirname = path.dirname(__filename);
 validateEnv();
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Security headers
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
-// CORS - allow configured frontend and vercel.app domains
+const allowedOrigins = new Set([config.frontendUrl]);
+if (config.nodeEnv !== 'production') {
+  allowedOrigins.add('http://localhost:5173');
+  allowedOrigins.add('http://127.0.0.1:5173');
+  allowedOrigins.add('http://localhost:5174');
+  allowedOrigins.add('http://127.0.0.1:5174');
+}
+
+const isAllowedOrigin = (origin, req) => {
+  if (allowedOrigins.has(origin)) return true;
+  try {
+    const requestOrigin = new URL(`${req.protocol}://${req.get('host')}`).origin;
+    return origin === requestOrigin;
+  } catch {
+    return false;
+  }
+};
+
 app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || origin.includes('vercel.app') || origin === config.frontendUrl || origin.startsWith('http://localhost')) {
-        callback(null, true);
-      } else {
-        callback(null, true);
-      }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+  cors((req, callback) => {
+    const origin = req.get('origin');
+    callback(null, {
+      origin: origin && isAllowedOrigin(origin, req),
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+    });
   })
 );
+
+app.use((req, res, next) => {
+  const origin = req.get('origin');
+  const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+  if (origin && isMutation && !isAllowedOrigin(origin, req)) {
+    return res.status(403).json({ success: false, message: 'Request origin is not allowed' });
+  }
+  next();
+});
 
 // High-capacity rate limit tuned for 200+ concurrent users
 const globalLimiter = rateLimit({
@@ -65,9 +90,28 @@ app.use(cookieParser());
 // Static uploads serving
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Health check (no auth needed)
-app.get('/health', (req, res) => {
-  res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() });
+// Connect once per warm function instance and fail requests clearly if MongoDB is unavailable.
+app.use(async (req, res, next) => {
+  if (req.path === '/health' || req.path === '/api/health') return next();
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    error.statusCode = 503;
+    error.message = 'MongoDB is unavailable. Verify the root .env MONGODB_URI and allow MongoDB Atlas DNS/network access.';
+    next(error);
+  }
+});
+
+// Health check (no authentication needed)
+app.get(['/health', '/api/health'], (req, res) => {
+  const databaseConnected = mongoose.connection.readyState === 1;
+  res.status(databaseConnected ? 200 : 503).json({
+    success: databaseConnected,
+    status: databaseConnected ? 'ok' : 'degraded',
+    database: databaseConnected ? 'connected' : 'unavailable',
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // API Routes
@@ -97,12 +141,13 @@ app.use(errorHandler);
 // Start server
 const PORT = config.port;
 
-async function start() {
-  await connectDB();
+function start() {
   app.listen(PORT, () => {
     console.log(`[SERVER] Running on http://localhost:${PORT}`);
     console.log(`[SERVER] Environment: ${config.nodeEnv}`);
-    console.log(`[SERVER] Gemini AI: ${config.geminiApiKey ? 'Configured' : 'NOT configured (AI features disabled)'}`);
+  });
+  connectDB().catch(() => {
+    console.error('[DB] Initial connection failed. API requests will retry the database connection.');
   });
 }
 

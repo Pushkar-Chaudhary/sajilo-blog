@@ -4,17 +4,16 @@
  * Creates the initial admin user and default categories.
  * Reads credentials from .env - never hardcode passwords here.
  */
-import dotenv from 'dotenv';
 import mongoose from 'mongoose';
-dotenv.config({ path: new URL('../.env', import.meta.url) });
-
+import dns from 'node:dns';
+import { config } from '../config/config.js';
 import User from '../models/User.js';
 import Category from '../models/Category.js';
 
-const MONGODB_URI = process.env.MONGODB_URI;
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-const ADMIN_NAME = process.env.ADMIN_NAME || 'Admin';
+const MONGODB_URI = config.mongoUri;
+const ADMIN_EMAIL = config.adminEmail.toLowerCase().trim();
+const ADMIN_PASSWORD = config.adminPassword;
+const ADMIN_NAME = config.adminName;
 
 if (!MONGODB_URI || !ADMIN_EMAIL || !ADMIN_PASSWORD) {
   console.error('❌ Missing required env vars: MONGODB_URI, ADMIN_EMAIL, ADMIN_PASSWORD');
@@ -31,13 +30,20 @@ const DEFAULT_CATEGORIES = [
 ];
 
 async function seed() {
+  if (config.mongoDnsServers.length > 0) {
+    dns.setServers(config.mongoDnsServers);
+  }
+
   await mongoose.connect(MONGODB_URI);
   console.log('✅ Connected to MongoDB');
 
   // Create admin user
-  const existing = await User.findOne({ email: ADMIN_EMAIL });
+  const existing = await User.findOne({ email: ADMIN_EMAIL }).select('+password');
   if (existing) {
     if (existing.role !== 'admin') {
+      if (!(await existing.comparePassword(ADMIN_PASSWORD))) {
+        throw new Error('The configured admin email is already registered with a different password; refusing to promote it.');
+      }
       existing.role = 'admin';
       await existing.save();
       console.log(`✅ Updated ${ADMIN_EMAIL} to admin role`);

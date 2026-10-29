@@ -12,14 +12,13 @@ function sendTokenResponse(user, statusCode, res) {
   const cookieOptions = {
     expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: config.nodeEnv === 'production' ? 'none' : 'lax',
     secure: config.nodeEnv === 'production',
   };
 
   res.cookie('token', token, cookieOptions);
   res.status(statusCode).json({
     success: true,
-    token,
     user: user.toJSON(),
   });
 }
@@ -71,7 +70,12 @@ export async function login(req, res, next) {
 }
 
 export async function logout(req, res) {
-  res.cookie('token', '', { httpOnly: true, expires: new Date(0), sameSite: 'lax' });
+  res.cookie('token', '', {
+    httpOnly: true,
+    expires: new Date(0),
+    sameSite: config.nodeEnv === 'production' ? 'none' : 'lax',
+    secure: config.nodeEnv === 'production',
+  });
   res.json({ success: true, message: 'Logged out successfully' });
 }
 

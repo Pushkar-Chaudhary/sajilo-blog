@@ -1,8 +1,8 @@
-import React, { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { blog_data, comments_data, assets } from '../assets/assets'
 import BlogCard from '../components/BlogCard'
 import toast from 'react-hot-toast'
+import { createCommentApi, getCommentsApi } from '../services/api'
 
 const categoryColors = {
   Technology: 'bg-blue-100 text-blue-800 border-blue-200',
@@ -11,45 +11,110 @@ const categoryColors = {
   Finance: 'bg-purple-100 text-purple-800 border-purple-200',
 }
 
-const Blog = ({ blogs = blog_data, user }) => {
+const Blog = ({
+  blogs,
+  user,
+  onDeleteBlog,
+  onLoadBlog,
+  onRequestAuth,
+  onToggleBookmark,
+}) => {
   const { id } = useParams()
   const navigate = useNavigate()
-
-  // Find blog by id, default to first blog if no id or not found
-  const blog = (blogs && blogs.length > 0 ? blogs : blog_data).find((b) => b._id === id) || blog_data[0]
-
-  // Filter existing comments for this blog
-  const initialComments = comments_data.filter((c) => c.blog?._id === blog._id)
-  const [comments, setComments] = useState(initialComments)
-  const [commentName, setCommentName] = useState(user?.name || '')
+  const [loadedBlog, setLoadedBlog] = useState(null)
+  const [articleError, setArticleError] = useState('')
+  const [comments, setComments] = useState([])
+  const [commentsLoading, setCommentsLoading] = useState(true)
+  const [commentsError, setCommentsError] = useState('')
   const [commentText, setCommentText] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const blog = loadedBlog || blogs.find((item) => item._id === id || item.slug === id)
+  const canDelete = blog && user && (
+    user.role === 'admin' ||
+    (blog.authorId && blog.authorId === user._id)
+  )
 
-  const handleAddComment = (e) => {
+  useEffect(() => {
+    let active = true
+    onLoadBlog(id)
+      .then((article) => {
+        if (active) setLoadedBlog(article)
+      })
+      .catch(() => {
+        if (active) setArticleError('This story could not be found or loaded.')
+      })
+    return () => {
+      active = false
+    }
+  }, [id, onLoadBlog])
+
+  useEffect(() => {
+    if (!blog) return
+    let active = true
+    getCommentsApi(blog._id)
+      .then(({ comments: loadedComments }) => {
+        if (active) setComments(loadedComments)
+      })
+      .catch(() => {
+        if (active) setCommentsError('Comments could not be loaded.')
+      })
+      .finally(() => {
+        if (active) setCommentsLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [blog])
+
+  const handleDelete = async () => {
+    if (!window.confirm('Delete this article permanently?')) return
+    setDeleting(true)
+    try {
+      await onDeleteBlog(blog)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Could not delete the article.')
+      setDeleting(false)
+    }
+  }
+
+  const handleAddComment = async (e) => {
     e.preventDefault()
+    if (!user) {
+      onRequestAuth('login')
+      return
+    }
     if (!commentText.trim()) {
       toast.error('Please enter a comment.')
       return
     }
 
-    const newComment = {
-      _id: Date.now().toString(),
-      name: commentName.trim() || 'Anonymous Reader',
-      content: commentText.trim(),
-      createdAt: new Date().toISOString(),
-      isApproved: true,
+    try {
+      const { comment } = await createCommentApi(blog._id, commentText.trim())
+      setComments((current) => [comment, ...current])
+      setCommentText('')
+      toast.success('Comment posted successfully!')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Could not post your comment.')
     }
-
-    setComments([newComment, ...comments])
-    setCommentText('')
-    setCommentName('')
-    toast.success('Comment posted successfully!')
   }
 
-  // Related blogs
-  const relatedBlogs = blog_data
-    .filter((b) => b._id !== blog._id && b.category === blog.category)
-    .slice(0, 3)
+  if (!blog) {
+    return (
+      <div className="mx-auto max-w-xl px-4 py-24 text-center">
+        <h1 className="text-2xl font-bold text-gray-900">
+          {articleError ? 'Story unavailable' : 'Loading story…'}
+        </h1>
+        {articleError && <p className="mt-2 text-sm text-gray-600">{articleError}</p>}
+        <Link to="/" className="mt-6 inline-block text-sm font-semibold text-indigo-600 hover:text-indigo-800">
+          Back to stories
+        </Link>
+      </div>
+    )
+  }
 
+  const relatedBlogs = blogs
+    .filter((item) => item._id !== blog._id && item.category === blog.category)
+    .slice(0, 3)
   const formattedDate = new Date(blog.createdAt).toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
@@ -82,6 +147,24 @@ const Blog = ({ blogs = blog_data, user }) => {
 
         {/* Article Header */}
         <div className="rounded-3xl bg-white p-6 sm:p-10 shadow-sm border border-gray-200/80 mb-10">
+          {canDelete && (
+            <div className="mb-5 flex justify-end gap-2">
+              <Link
+                to={`/write/${blog.slug || blog._id}`}
+                className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100"
+              >
+                Edit article
+              </Link>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Delete article'}
+              </button>
+            </div>
+          )}
           <div className="mb-4">
             <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${categoryStyle}`}>
               {blog.category}
@@ -102,10 +185,10 @@ const Blog = ({ blogs = blog_data, user }) => {
           <div className="mt-8 pt-6 border-t border-gray-100 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="h-11 w-11 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                SB
+                {(blog.author || 'S').charAt(0).toUpperCase()}
               </div>
               <div>
-                <p className="text-sm font-bold text-gray-900">Sajilo Editorial Team</p>
+                <p className="text-sm font-bold text-gray-900">{blog.author || 'Sajilo Editorial Team'}</p>
                 <div className="flex items-center gap-2 text-xs text-gray-500">
                   <span>{formattedDate}</span>
                   <span>•</span>
@@ -158,42 +241,45 @@ const Blog = ({ blogs = blog_data, user }) => {
           </h2>
 
           {/* Add Comment Form */}
-          <form onSubmit={handleAddComment} className="mb-8 space-y-4 rounded-2xl bg-slate-50 p-5 border border-gray-200">
-            <h3 className="text-sm font-bold text-gray-900">Leave a reply</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input
-                type="text"
-                placeholder="Your Name (optional)"
-                value={commentName}
-                onChange={(e) => setCommentName(e.target.value)}
-                className="rounded-xl border border-gray-300 bg-white px-3.5 py-2 text-sm text-gray-900 focus:border-indigo-600 focus:outline-none"
+          {user ? (
+            <form onSubmit={handleAddComment} className="mb-8 space-y-4 rounded-2xl bg-slate-50 p-5 border border-gray-200">
+              <h3 className="text-sm font-bold text-gray-900">Leave a reply as {user.name}</h3>
+              <textarea
+                rows="3"
+                required
+                maxLength={2000}
+                placeholder="What are your thoughts on this story?"
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                className="w-full rounded-xl border border-gray-300 bg-white p-3 text-sm text-gray-900 focus:border-indigo-600 focus:outline-none"
               />
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  className="rounded-xl bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors shadow-sm"
+                >
+                  Post Comment
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="mb-8 rounded-2xl bg-slate-50 p-5 text-sm text-gray-700">
+              <button type="button" onClick={() => onRequestAuth('login')} className="font-semibold text-indigo-600 hover:text-indigo-800">
+                Sign in
+              </button>{' '}
+              to join the conversation.
             </div>
-            <textarea
-              rows="3"
-              required
-              placeholder="What are your thoughts on this story?"
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              className="w-full rounded-xl border border-gray-300 bg-white p-3 text-sm text-gray-900 focus:border-indigo-600 focus:outline-none"
-            />
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                className="rounded-xl bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors shadow-sm"
-              >
-                Post Comment
-              </button>
-            </div>
-          </form>
+          )}
 
           {/* Comment list */}
           <div className="space-y-4">
+            {commentsLoading && <p className="py-6 text-center text-sm text-gray-500">Loading comments…</p>}
+            {commentsError && <p className="py-6 text-center text-sm text-red-600" role="alert">{commentsError}</p>}
             {comments.length > 0 ? (
               comments.map((comment) => (
                 <div key={comment._id} className="rounded-2xl border border-gray-100 p-4 sm:p-5 bg-white">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-sm text-gray-900">{comment.name}</span>
+                    <span className="font-bold text-sm text-gray-900">{comment.author?.name || 'Community writer'}</span>
                     <span className="text-xs text-gray-400">
                       {comment.createdAt ? new Date(comment.createdAt).toLocaleDateString() : 'Recent'}
                     </span>
@@ -201,11 +287,11 @@ const Blog = ({ blogs = blog_data, user }) => {
                   <p className="text-sm text-gray-700 leading-relaxed">{comment.content}</p>
                 </div>
               ))
-            ) : (
+            ) : !commentsLoading && !commentsError ? (
               <p className="text-center text-sm text-gray-500 py-6">
                 No comments yet. Be the first to share your thoughts!
               </p>
-            )}
+            ) : null}
           </div>
         </section>
 
@@ -217,7 +303,13 @@ const Blog = ({ blogs = blog_data, user }) => {
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
               {relatedBlogs.map((b) => (
-                <BlogCard key={b._id} blog={b} />
+                <BlogCard
+                  key={b._id}
+                  blog={b}
+                  user={user}
+                  onToggleBookmark={onToggleBookmark}
+                  onRequestAuth={onRequestAuth}
+                />
               ))}
             </div>
           </section>

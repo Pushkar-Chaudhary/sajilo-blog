@@ -1,8 +1,25 @@
 import Article from '../models/Article.js';
 import Bookmark from '../models/Bookmark.js';
 import Comment from '../models/Comment.js';
+import Category from '../models/Category.js';
+import mongoose from 'mongoose';
 import { AppError } from '../middleware/errorHandler.js';
 import { generateUniqueSlug, estimateReadingTime, sanitizeHtml, paginate } from '../utils/helpers.js';
+
+async function resolveCategory(category) {
+  if (!category) return null;
+  if (typeof category !== 'string') {
+    throw new AppError('Category must be a category name or ID', 400);
+  }
+
+  const value = category.trim();
+  const found = mongoose.Types.ObjectId.isValid(value)
+    ? await Category.findById(value)
+    : await Category.findOne({ $or: [{ name: value }, { slug: value.toLowerCase() }] });
+
+  if (!found) throw new AppError('Category not found', 400);
+  return found._id;
+}
 
 export async function getArticles(req, res, next) {
   try {
@@ -45,6 +62,17 @@ export async function getArticles(req, res, next) {
         .lean(),
       Article.countDocuments(query),
     ]);
+
+    if (req.user && articles.length > 0) {
+      const bookmarkedIds = await Bookmark.find({
+        user: req.user._id,
+        article: { $in: articles.map((article) => article._id) },
+      }).distinct('article');
+      const bookmarked = new Set(bookmarkedIds.map((articleId) => articleId.toString()));
+      for (const article of articles) {
+        article.isBookmarked = bookmarked.has(article._id.toString());
+      }
+    }
 
     res.json({
       success: true,
@@ -126,6 +154,7 @@ export async function createArticle(req, res, next) {
     const slug = await generateUniqueSlug(title);
     const sanitizedContent = sanitizeHtml(content || '');
     const readingTime = estimateReadingTime(sanitizedContent);
+    const categoryId = await resolveCategory(category);
 
     const article = await Article.create({
       author: req.user._id,
@@ -134,7 +163,7 @@ export async function createArticle(req, res, next) {
       subtitle: subtitle?.trim().slice(0, 300) || '',
       content: sanitizedContent,
       coverImage: coverImage || '',
-      category: category || null,
+      category: categoryId,
       tags: Array.isArray(tags) ? tags.slice(0, 10).map((t) => t.trim().toLowerCase()) : [],
       status: status === 'published' ? 'published' : 'draft',
       publishedAt: status === 'published' ? new Date() : null,
@@ -179,7 +208,7 @@ export async function updateArticle(req, res, next) {
       updates.readingTime = estimateReadingTime(updates.content);
     }
     if (coverImage !== undefined) updates.coverImage = coverImage;
-    if (category !== undefined) updates.category = category || null;
+    if (category !== undefined) updates.category = await resolveCategory(category);
     if (tags !== undefined) updates.tags = Array.isArray(tags) ? tags.slice(0, 10).map((t) => t.trim().toLowerCase()) : [];
     if (seoTitle !== undefined) updates.seoTitle = seoTitle.trim().slice(0, 70);
     if (seoDescription !== undefined) updates.seoDescription = seoDescription.trim().slice(0, 160);

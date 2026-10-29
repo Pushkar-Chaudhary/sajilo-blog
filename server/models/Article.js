@@ -19,6 +19,7 @@ const articleSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
+      required: true,
     },
     subtitle: {
       type: String,

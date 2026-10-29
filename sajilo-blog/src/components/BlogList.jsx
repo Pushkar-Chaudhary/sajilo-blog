@@ -1,4 +1,3 @@
-import React from 'react'
 import BlogCard from './BlogCard'
 
 const BlogList = ({
@@ -8,6 +7,12 @@ const BlogList = ({
   setSelectedCategory,
   searchTerm,
   setSearchTerm,
+  loading,
+  error,
+  onRetry,
+  user,
+  onToggleBookmark,
+  onRequestAuth,
 }) => {
   // Filter blogs by category and search term
   const filteredBlogs = blogs.filter((blog) => {
@@ -71,10 +76,30 @@ const BlogList = ({
       </div>
 
       {/* Blog Cards Grid */}
-      {filteredBlogs.length > 0 ? (
+      {loading ? (
+        <p className="py-16 text-center text-sm text-gray-500" role="status">Loading published stories…</p>
+      ) : error ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-10 text-center" role="alert">
+          <h3 className="text-base font-semibold text-red-900">Stories are temporarily unavailable</h3>
+          <p className="mt-2 text-sm text-red-800">{error}</p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+          >
+            Try again
+          </button>
+        </div>
+      ) : filteredBlogs.length > 0 ? (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {filteredBlogs.map((blog) => (
-            <BlogCard key={blog._id} blog={blog} />
+            <BlogCard
+              key={blog._id}
+              blog={blog}
+              user={user}
+              onToggleBookmark={onToggleBookmark}
+              onRequestAuth={onRequestAuth}
+            />
           ))}
         </div>
       ) : (
@@ -84,9 +109,13 @@ const BlogList = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <h3 className="text-base font-semibold text-gray-900">No articles found</h3>
+          <h3 className="text-base font-semibold text-gray-900">
+            {blogs.length === 0 ? 'No stories published yet' : 'No articles found'}
+          </h3>
           <p className="mt-1 text-sm text-gray-500">
-            We couldn't find any articles matching your search criteria.
+            {blogs.length === 0
+              ? 'Be the first writer to share a story with the community.'
+              : "We couldn't find any articles matching your search criteria."}
           </p>
           <div className="mt-6 flex justify-center gap-3">
             {searchTerm && (

@@ -21,19 +21,11 @@
       "dest": "server/server.js"
     },
     {
-      "src": "/assets/(.*)",
-      "dest": "sajilo-blog/dist/assets/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "sajilo-blog/dist/$1"
-    },
-    {
       "handle": "filesystem"
     },
     {
-      "src": "/.*",
-      "dest": "sajilo-blog/dist/index.html"
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }

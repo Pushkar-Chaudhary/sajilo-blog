@@ -3,13 +3,15 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { config } from '../config/config.js';
-import { GoogleGenAI } from '@google/genai';
+import { authenticate } from '../middleware/auth.js';
+import { put } from '@vercel/blob';
+import { randomUUID } from 'crypto';
 
 const router = Router();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = process.env.VERCEL ? '/tmp/uploads' : path.resolve(__dirname, '../uploads');
+const useBlobStorage = Boolean(process.env.VERCEL);
 
 // Ensure uploads folder exists
 if (!fs.existsSync(uploadsDir)) {
@@ -32,114 +34,74 @@ const storage = multer.diskStorage({
   },
 });
 
-// File filter (Images only)
-const fileFilter = (req, file, cb) => {
-  const allowed = /jpeg|jpg|png|webp|gif|svg/;
-  const ext = path.extname(file.originalname).toLowerCase();
-  const mime = file.mimetype.toLowerCase();
+// File filter (raster images only; SVG can contain active content)
+const allowedImageTypes = new Map([
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.png', 'image/png'],
+  ['.webp', 'image/webp'],
+  ['.gif', 'image/gif'],
+]);
 
-  if (allowed.test(ext) || allowed.test(mime)) {
+const fileFilter = (req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (allowedImageTypes.get(ext) === file.mimetype.toLowerCase()) {
     cb(null, true);
   } else {
-    cb(new Error('Only image files (JPEG, PNG, WebP, GIF, SVG) are allowed'));
+    cb(new Error('Only valid JPEG, PNG, WebP, and GIF images are allowed'));
   }
 };
 
 const upload = multer({
-  storage,
+  storage: useBlobStorage ? multer.memoryStorage() : storage,
   fileFilter,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB limit
 });
 
+function uploadImage(req, res, next) {
+  if (useBlobStorage && !process.env.BLOB_READ_WRITE_TOKEN) {
+    return res.status(503).json({
+      success: false,
+      message: 'Image storage is not configured. Add BLOB_READ_WRITE_TOKEN to the deployment environment.',
+    });
+  }
+  upload.single('image')(req, res, next);
+}
+
+async function saveImage(req) {
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  if (useBlobStorage) {
+    const blob = await put(`uploads/${randomUUID()}${ext}`, req.file.buffer, {
+      access: 'public',
+      contentType: req.file.mimetype,
+    });
+    return { url: blob.url, filename: blob.pathname };
+  }
+
+  return {
+    url: `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`,
+    filename: req.file.filename,
+  };
+}
+
 // Standard Picture Upload
-router.post('/', upload.single('image'), (req, res) => {
+router.post('/', authenticate, uploadImage, async (req, res, next) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Please upload an image file.' });
     }
 
-    const host = req.get('host');
-    const protocol = req.protocol;
-    const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+    const savedImage = await saveImage(req);
 
     res.json({
       success: true,
       message: 'Image uploaded successfully',
-      url: fileUrl,
-      filename: req.file.filename,
+      ...savedImage,
       size: req.file.size,
       mimetype: req.file.mimetype,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// Picture Upload with AI Vision Analysis (Generate title, tags & outline from image)
-router.post('/ai-analyze', upload.single('image'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'Please upload an image file.' });
-    }
-
-    const host = req.get('host');
-    const protocol = req.protocol;
-    const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
-
-    let aiAnalysis = null;
-
-    if (config.geminiApiKey) {
-      try {
-        const fileBuffer = fs.readFileSync(req.file.path);
-        const base64Data = fileBuffer.toString('base64');
-
-        const ai = new GoogleGenAI({ apiKey: config.geminiApiKey });
-
-        const prompt = `You are an AI editor for a modern blog platform. Analyze this image and generate blog ideas in valid JSON only (no markdown fences):
-{
-  "suggestedTitle": "Catchy headline for an article featuring this image",
-  "suggestedCategory": "Technology | Startup | Lifestyle | Finance",
-  "altText": "Accessible description of what is depicted in the image",
-  "tags": ["tag1", "tag2", "tag3", "tag4"],
-  "storyHook": "Engaging opening paragraph or story hook inspired by this visual"
-}`;
-
-        const response = await ai.models.generateContent({
-          model: config.geminiModel,
-          contents: [
-            prompt,
-            {
-              inlineData: {
-                mimeType: req.file.mimetype,
-                data: base64Data,
-              },
-            },
-          ],
-        });
-
-        const rawText = response.text || '';
-        const cleaned = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        aiAnalysis = JSON.parse(cleaned);
-      } catch (err) {
-        console.warn('[AI Vision] Analysis error:', err.message);
-        aiAnalysis = {
-          suggestedTitle: 'Exploring New Horizons',
-          suggestedCategory: 'Lifestyle',
-          altText: 'Uploaded blog visual',
-          tags: ['Inspiration', 'Trending', 'Story'],
-          storyHook: 'Every picture tells a compelling story waiting to be explored.',
-        };
-      }
-    }
-
-    res.json({
-      success: true,
-      url: fileUrl,
-      filename: req.file.filename,
-      ai: aiAnalysis,
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    next(error);
   }
 });
 

@@ -5,23 +5,16 @@ import { authenticate } from '../middleware/auth.js';
 
 const router = Router();
 
-const aiLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
+router.use(authenticate);
+router.use(rateLimit({
+  windowMs: 60 * 1000,
   max: 5,
   message: { success: false, message: 'Too many AI requests. Please wait a moment.' },
-});
-
-// All AI routes require authentication
-router.use(authenticate);
-router.use(aiLimiter);
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
 
 router.post('/generate', ai.generateArticle);
 router.post('/rewrite', ai.rewriteText);
-router.post('/summarize', ai.summarizeArticle);
-router.post('/titles', ai.generateTitles);
-router.post('/outline', ai.generateOutline);
-router.post('/seo', ai.generateSEO);
-router.post('/tags', ai.suggestTags);
-router.post('/chat', ai.chatWithAssistant);
 
 export default router;

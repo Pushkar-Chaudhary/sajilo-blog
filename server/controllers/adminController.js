@@ -3,7 +3,6 @@ import Article from '../models/Article.js';
 import Comment from '../models/Comment.js';
 import Report from '../models/Report.js';
 import Category from '../models/Category.js';
-import AIUsage from '../models/AIUsage.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { paginate } from '../utils/helpers.js';
 
@@ -17,7 +16,6 @@ export async function getOverview(req, res, next) {
       pendingReports,
       recentUsers,
       recentArticles,
-      aiUsageToday,
     ] = await Promise.all([
       User.countDocuments(),
       Article.countDocuments(),
@@ -30,7 +28,6 @@ export async function getOverview(req, res, next) {
         .limit(5)
         .select('title status createdAt publishedAt')
         .populate('author', 'name'),
-      AIUsage.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } }),
     ]);
 
     // Total views from published articles
@@ -49,7 +46,6 @@ export async function getOverview(req, res, next) {
         draftArticles,
         pendingReports,
         totalViews,
-        aiUsageToday,
       },
       recentUsers,
       recentArticles,

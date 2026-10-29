@@ -1,6 +1,4 @@
-import React from 'react'
-
-const Hero = ({ searchTerm, setSearchTerm, selectedCategory, setSelectedCategory, categories, onOpenAiStudio }) => {
+const Hero = ({ searchTerm, setSearchTerm, selectedCategory, setSelectedCategory, categories, onBrowse }) => {
   return (
     <div className="relative bg-white border-b border-zinc-200/80 py-16 sm:py-20">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 text-center">
@@ -8,7 +6,7 @@ const Hero = ({ searchTerm, setSearchTerm, selectedCategory, setSelectedCategory
         {/* Editorial Sub-badge */}
         <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3.5 py-1 text-xs font-semibold tracking-wide text-zinc-700 mb-6">
           <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-          Modern Thoughts &bull; In-depth Analysis &bull; AI Powered
+          Modern thoughts and community writing
         </div>
 
         {/* Headline */}
@@ -19,14 +17,17 @@ const Hero = ({ searchTerm, setSearchTerm, selectedCategory, setSelectedCategory
 
         {/* Subtitle */}
         <p className="mx-auto mt-5 max-w-2xl text-base sm:text-lg text-zinc-600 font-normal leading-relaxed">
-          Curated writing on technology, startups, thoughtful living, and personal finance.
-          Explore insightful essays or compose your own stories.
+          Read community stories on technology, startups, thoughtful living, and personal finance without an account.
+          Sign in only when you want to publish, comment, or save a story.
         </p>
 
         {/* Search & Actions Bar */}
         <div className="mx-auto mt-9 max-w-2xl">
-          <form 
-            onSubmit={(e) => e.preventDefault()}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              onBrowse()
+            }}
             className="flex items-center rounded-2xl bg-zinc-50 p-2 border border-zinc-300 shadow-sm transition-all focus-within:border-zinc-900 focus-within:bg-white"
           >
             <div className="flex items-center pl-3 text-zinc-400">
@@ -51,14 +52,10 @@ const Hero = ({ searchTerm, setSearchTerm, selectedCategory, setSelectedCategory
               </button>
             )}
             <button
-              type="button"
-              onClick={onOpenAiStudio}
+              type="submit"
               className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-zinc-800 transition-colors cursor-pointer"
             >
-              <svg className="h-4 w-4 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <span>AI Studio</span>
+              <span>Search</span>
             </button>
           </form>
         </div>
@@ -81,6 +78,14 @@ const Hero = ({ searchTerm, setSearchTerm, selectedCategory, setSelectedCategory
             </button>
           ))}
         </div>
+
+        <button
+          type="button"
+          onClick={onBrowse}
+          className="mt-7 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500"
+        >
+          Read the latest stories
+        </button>
 
       </div>
     </div>

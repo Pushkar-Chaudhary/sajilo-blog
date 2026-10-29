@@ -10,7 +10,9 @@
     "dev:client": "npm run dev --prefix sajilo-blog",
     "dev:frontend": "npm run dev --prefix sajilo-blog",
     "seed": "npm run seed --prefix server",
-    "build": "npm run build --prefix sajilo-blog"
+    "admin:reset": "npm run admin:reset --prefix server",
+    "build": "npm run build --prefix sajilo-blog && npm run check:server",
+    "check:server": "node --check server/server.js && node --check server/routes/upload.js && node --check server/controllers/articleController.js && node --check server/controllers/authController.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

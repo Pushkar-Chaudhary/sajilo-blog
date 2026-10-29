@@ -1,40 +1,68 @@
-import React, { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { uploadImage, updateProfileApi, changePasswordApi } from '../services/api'
-import { blog_data } from '../assets/assets'
+import {
+  changePasswordApi,
+  getAdminArticlesApi,
+  getAdminUsersApi,
+  updateProfileApi,
+  updateUserRoleApi,
+  uploadImage,
+} from '../services/api'
 
-const Profile = ({ user, onUpdateUser, onLogout }) => {
+const Profile = ({ user, bookmarks, onToggleBookmark, onUpdateUser, onLogout, onAdminDeleteArticle }) => {
   const navigate = useNavigate()
   const fileInputRef = useRef(null)
 
-  const [activeTab, setActiveTab] = useState('profile') // 'profile' | 'security' | 'bookmarks'
+  const [activeTab, setActiveTab] = useState('profile')
   
   // Profile form state
-  const [name, setName] = useState(user?.name || 'Alex Morgan')
-  const [email] = useState(user?.email || 'alex@example.com')
-  const [bio, setBio] = useState(user?.bio || 'Passionate writer, tech enthusiast, and builder exploring the intersection of AI, design, and product craftsmanship.')
-  const [website, setWebsite] = useState(user?.website || 'https://alexmorgan.dev')
+  const [name, setName] = useState(user?.name || '')
+  const [email] = useState(user?.email || '')
+  const [bio, setBio] = useState(user?.bio || '')
+  const [website, setWebsite] = useState(user?.website || '')
   const [avatar, setAvatar] = useState(user?.avatar || '')
 
   // Password state
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [visiblePasswords, setVisiblePasswords] = useState({
+    current: false,
+    new: false,
+    confirm: false,
+  })
 
   // Loading states
   const [savingProfile, setSavingProfile] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
+  const [adminUsers, setAdminUsers] = useState([])
+  const [adminArticles, setAdminArticles] = useState([])
+  const [loadingAdmin, setLoadingAdmin] = useState(user.role === 'admin')
+  const [updatingRoleId, setUpdatingRoleId] = useState('')
 
-  // Bookmarks
-  const [bookmarks, setBookmarks] = useState(() => {
-    const saved = localStorage.getItem('sajilo_bookmarks')
-    if (saved) {
-      try { return JSON.parse(saved) } catch (e) {}
+  useEffect(() => {
+    if (activeTab !== 'admin' || user.role !== 'admin') return undefined
+
+    let active = true
+    Promise.all([getAdminUsersApi(), getAdminArticlesApi()])
+      .then(([{ users }, { articles }]) => {
+        if (!active) return
+        setAdminUsers(users)
+        setAdminArticles(articles)
+      })
+      .catch((error) => {
+        if (active) toast.error(error.response?.data?.message || 'Could not load admin tools.')
+      })
+      .finally(() => {
+        if (active) setLoadingAdmin(false)
+      })
+
+    return () => {
+      active = false
     }
-    return [blog_data[0]._id, blog_data[2]._id]
-  })
+  }, [activeTab, user.role])
 
   // Handle avatar upload
   const handleAvatarChange = async (e) => {
@@ -51,13 +79,13 @@ const Profile = ({ user, onUpdateUser, onLogout }) => {
     try {
       const res = await uploadImage(file)
       if (res.url) {
+        const response = await updateProfileApi({ avatar: res.url })
         setAvatar(res.url)
-        const updated = { ...user, avatar: res.url, name, bio, website }
-        onUpdateUser(updated)
+        onUpdateUser(response.user)
         toast.success('Profile picture updated!', { id: toastId })
       }
     } catch (err) {
-      toast.error('Upload failed. Using local preview.', { id: toastId })
+      toast.error(err.response?.data?.message || 'Upload failed.', { id: toastId })
     } finally {
       setUploadingAvatar(false)
     }
@@ -74,12 +102,11 @@ const Profile = ({ user, onUpdateUser, onLogout }) => {
     setSavingProfile(true)
     try {
       const payload = { name: name.trim(), bio: bio.trim(), website: website.trim(), avatar }
-      await updateProfileApi(payload)
-      const updatedUser = { ...user, ...payload }
-      onUpdateUser(updatedUser)
+      const response = await updateProfileApi(payload)
+      onUpdateUser(response.user)
       toast.success('Account profile updated successfully!')
     } catch (err) {
-      toast.error('Could not save changes.')
+      toast.error(err.response?.data?.message || 'Could not save changes.')
     } finally {
       setSavingProfile(false)
     }
@@ -115,13 +142,38 @@ const Profile = ({ user, onUpdateUser, onLogout }) => {
     }
   }
 
-  const bookmarkedBlogs = blog_data.filter((b) => bookmarks.includes(b._id))
+  const handleRemoveBookmark = async (blog) => {
+    try {
+      await onToggleBookmark(blog)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Could not remove the saved story.')
+    }
+  }
 
-  const removeBookmark = (id) => {
-    const updated = bookmarks.filter((bId) => bId !== id)
-    setBookmarks(updated)
-    localStorage.setItem('sajilo_bookmarks', JSON.stringify(updated))
-    toast.success('Removed from bookmarks')
+  const handleToggleAdminRole = async (targetUser) => {
+    const role = targetUser.role === 'admin' ? 'user' : 'admin'
+    setUpdatingRoleId(targetUser._id)
+    try {
+      const { user: updatedUser } = await updateUserRoleApi(targetUser._id, role)
+      setAdminUsers((current) => current.map((item) => (
+        item._id === updatedUser._id ? updatedUser : item
+      )))
+      toast.success(role === 'admin' ? 'Co-admin access granted.' : 'Admin access removed.')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Could not update account role.')
+    } finally {
+      setUpdatingRoleId('')
+    }
+  }
+
+  const handleAdminDeleteArticle = async (article) => {
+    if (!window.confirm(`Delete "${article.title}" permanently?`)) return
+    try {
+      await onAdminDeleteArticle(article._id)
+      setAdminArticles((current) => current.filter((item) => item._id !== article._id))
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Could not delete the article.')
+    }
   }
 
   return (
@@ -197,7 +249,7 @@ const Profile = ({ user, onUpdateUser, onLogout }) => {
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900">{name}</h1>
                 <span className="rounded-full bg-indigo-50 border border-indigo-200 px-3 py-0.5 text-xs font-semibold text-indigo-700">
-                  Verified Member
+                  {user.role === 'admin' ? 'Administrator' : 'Writer'}
                 </span>
               </div>
 
@@ -272,6 +324,21 @@ const Profile = ({ user, onUpdateUser, onLogout }) => {
                 {bookmarks.length}
               </span>
             </button>
+            {user.role === 'admin' && (
+              <button
+                onClick={() => {
+                  setLoadingAdmin(true)
+                  setActiveTab('admin')
+                }}
+                className={`pb-3 text-sm font-bold border-b-2 transition-colors cursor-pointer ${
+                  activeTab === 'admin'
+                    ? 'border-indigo-600 text-indigo-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                Admin tools
+              </button>
+            )}
           </div>
         </div>
 
@@ -367,39 +434,72 @@ const Profile = ({ user, onUpdateUser, onLogout }) => {
                 <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
                   Current Password
                 </label>
-                <input
-                  type="password"
-                  required
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-                />
+                <div className="relative">
+                  <input
+                    type={visiblePasswords.current ? 'text' : 'password'}
+                    required
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 pr-16 text-sm text-gray-900 focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setVisiblePasswords((visible) => ({ ...visible, current: !visible.current }))}
+                    aria-label={visiblePasswords.current ? 'Hide current password' : 'Show current password'}
+                    aria-pressed={visiblePasswords.current}
+                    className="absolute inset-y-0 right-3 text-xs font-semibold text-gray-600 hover:text-gray-900"
+                  >
+                    {visiblePasswords.current ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
                   New Password (min 8 characters)
                 </label>
-                <input
-                  type="password"
-                  required
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-                />
+                <div className="relative">
+                  <input
+                    type={visiblePasswords.new ? 'text' : 'password'}
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 pr-16 text-sm text-gray-900 focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setVisiblePasswords((visible) => ({ ...visible, new: !visible.new }))}
+                    aria-label={visiblePasswords.new ? 'Hide new password' : 'Show new password'}
+                    aria-pressed={visiblePasswords.new}
+                    className="absolute inset-y-0 right-3 text-xs font-semibold text-gray-600 hover:text-gray-900"
+                  >
+                    {visiblePasswords.new ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
                   Confirm New Password
                 </label>
-                <input
-                  type="password"
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-                />
+                <div className="relative">
+                  <input
+                    type={visiblePasswords.confirm ? 'text' : 'password'}
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 pr-16 text-sm text-gray-900 focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setVisiblePasswords((visible) => ({ ...visible, confirm: !visible.confirm }))}
+                    aria-label={visiblePasswords.confirm ? 'Hide confirmation password' : 'Show confirmation password'}
+                    aria-pressed={visiblePasswords.confirm}
+                    className="absolute inset-y-0 right-3 text-xs font-semibold text-gray-600 hover:text-gray-900"
+                  >
+                    {visiblePasswords.confirm ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
 
               <div className="pt-4">
@@ -423,21 +523,21 @@ const Profile = ({ user, onUpdateUser, onLogout }) => {
               Articles you have bookmarked to read later.
             </p>
 
-            {bookmarkedBlogs.length > 0 ? (
+            {bookmarks.length > 0 ? (
               <div className="divide-y divide-gray-100">
-                {bookmarkedBlogs.map((b) => (
+                {bookmarks.map((b) => (
                   <div key={b._id} className="py-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                       <img src={b.image} alt={b.title} className="h-14 w-20 rounded-xl object-cover shrink-0" />
                       <div>
                         <span className="text-xs font-semibold text-indigo-600">{b.category}</span>
-                        <Link to={`/blog/${b._id}`} className="block font-bold text-sm text-gray-900 hover:text-indigo-600 line-clamp-1">
+                        <Link to={`/blog/${b.slug || b._id}`} className="block font-bold text-sm text-gray-900 hover:text-indigo-600 line-clamp-1">
                           {b.title}
                         </Link>
                       </div>
                     </div>
                     <button
-                      onClick={() => removeBookmark(b._id)}
+                      onClick={() => handleRemoveBookmark(b)}
                       className="text-xs text-red-500 hover:text-red-700 font-semibold px-2 py-1 rounded-lg hover:bg-red-50"
                     >
                       Remove
@@ -450,6 +550,90 @@ const Profile = ({ user, onUpdateUser, onLogout }) => {
                 <p>No saved articles yet. Explore the feed and bookmark stories you love!</p>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'admin' && user.role === 'admin' && (
+          <div className="space-y-8">
+            <section className="rounded-3xl bg-white p-6 sm:p-8 shadow-sm border border-gray-200/80">
+              <h2 className="text-lg font-bold text-gray-900">Co-admin access</h2>
+              <p className="mt-1 mb-6 text-sm text-gray-500">
+                Promote registered accounts to co-admins. Co-admins can manage articles and users.
+              </p>
+              {loadingAdmin ? (
+                <p className="py-8 text-center text-sm text-gray-500">Loading accounts...</p>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {adminUsers.map((account) => (
+                    <div key={account._id} className="flex items-center justify-between gap-4 py-4">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900">{account.name}</p>
+                        <p className="truncate text-xs text-gray-500">{account.email}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <span className="text-xs font-medium text-gray-500">
+                          {account.role === 'admin' ? 'Admin' : 'Writer'}
+                        </span>
+                        {account._id !== user._id && account.status === 'active' && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAdminRole(account)}
+                            disabled={updatingRoleId === account._id}
+                            className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                          >
+                            {updatingRoleId === account._id
+                              ? 'Saving...'
+                              : account.role === 'admin' ? 'Remove admin' : 'Make co-admin'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {adminUsers.length === 0 && (
+                    <p className="py-6 text-sm text-gray-500">No registered accounts found.</p>
+                  )}
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-3xl bg-white p-6 sm:p-8 shadow-sm border border-gray-200/80">
+              <h2 className="text-lg font-bold text-gray-900">Manage articles</h2>
+              <p className="mt-1 mb-6 text-sm text-gray-500">
+                Edit or remove articles, including posts published by other writers.
+              </p>
+              {!loadingAdmin && (
+                <div className="divide-y divide-gray-100">
+                  {adminArticles.map((article) => (
+                    <div key={article._id} className="flex items-center justify-between gap-4 py-4">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900">{article.title}</p>
+                        <p className="text-xs text-gray-500">
+                          {article.status} · {article.author?.name || 'Unknown author'}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Link
+                          to={`/write/${article.slug}`}
+                          className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                        >
+                          Edit
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleAdminDeleteArticle(article)}
+                          className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {adminArticles.length === 0 && (
+                    <p className="py-6 text-sm text-gray-500">No articles found.</p>
+                  )}
+                </div>
+              )}
+            </section>
           </div>
         )}
 

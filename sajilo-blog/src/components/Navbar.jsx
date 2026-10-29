@@ -1,8 +1,7 @@
-import React, { useState } from 'react'
-import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 
-const Navbar = ({ onOpenAuth, user, onLogout, onOpenAiStudio }) => {
-  const navigate = useNavigate()
+const Navbar = ({ onOpenAuth, user, onLogout }) => {
   const location = useLocation()
   const [userDropdownOpen, setUserDropdownOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -36,26 +35,6 @@ const Navbar = ({ onOpenAuth, user, onLogout, onOpenAiStudio }) => {
             >
               Feed
             </Link>
-            <Link
-              to="/blog"
-              className={`text-sm font-semibold transition-colors ${
-                location.pathname === '/blog'
-                  ? 'text-zinc-900'
-                  : 'text-zinc-500 hover:text-zinc-900'
-              }`}
-            >
-              Explore
-            </Link>
-            
-            {/* Clean Solid AI Studio button */}
-            <button
-              type="button"
-              onClick={onOpenAiStudio}
-              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-800 hover:bg-zinc-200 transition-colors cursor-pointer"
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-              AI Studio
-            </button>
           </nav>
         </div>
 
@@ -89,7 +68,9 @@ const Navbar = ({ onOpenAuth, user, onLogout, onOpenAiStudio }) => {
                 </div>
                 <div className="hidden sm:block text-left text-xs">
                   <p className="font-bold text-zinc-900 leading-none">{user.name}</p>
-                  <p className="text-[10px] text-zinc-500 mt-0.5">Author</p>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">
+                    {user.role === 'admin' ? 'Admin' : 'Writer'}
+                  </p>
                 </div>
                 <svg className="h-3.5 w-3.5 text-zinc-400 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
@@ -125,20 +106,6 @@ const Navbar = ({ onOpenAuth, user, onLogout, onOpenAiStudio }) => {
                     </svg>
                     Create New Article
                   </Link>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUserDropdownOpen(false)
-                      onOpenAiStudio()
-                    }}
-                    className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 transition-colors text-left cursor-pointer"
-                  >
-                    <svg className="h-4 w-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    AI Picture &amp; Story Studio
-                  </button>
 
                   <div className="border-t border-zinc-100 my-1"></div>
 
@@ -203,28 +170,12 @@ const Navbar = ({ onOpenAuth, user, onLogout, onOpenAiStudio }) => {
             Feed
           </Link>
           <Link
-            to="/blog"
-            onClick={() => setMobileMenuOpen(false)}
-            className="block text-sm font-semibold text-zinc-800"
-          >
-            Explore
-          </Link>
-          <Link
             to="/write"
             onClick={() => setMobileMenuOpen(false)}
             className="block text-sm font-semibold text-zinc-900"
           >
             Write Story
           </Link>
-          <button
-            onClick={() => {
-              setMobileMenuOpen(false)
-              onOpenAiStudio()
-            }}
-            className="block text-sm font-semibold text-zinc-800 text-left"
-          >
-            AI Creative Studio
-          </button>
           {user && (
             <Link
               to="/profile"
