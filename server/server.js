@@ -33,7 +33,7 @@ app.set('trust proxy', 1);
 // Security headers
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
-const allowedOrigins = new Set([config.frontendUrl]);
+const allowedOrigins = new Set([config.frontendUrl].filter(Boolean));
 if (config.nodeEnv !== 'production') {
   allowedOrigins.add('http://localhost:5173');
   allowedOrigins.add('http://127.0.0.1:5173');
@@ -104,14 +104,24 @@ app.use(async (req, res, next) => {
 });
 
 // Health check (no authentication needed)
-app.get(['/health', '/api/health'], (req, res) => {
-  const databaseConnected = mongoose.connection.readyState === 1;
-  res.status(databaseConnected ? 200 : 503).json({
-    success: databaseConnected,
-    status: databaseConnected ? 'ok' : 'degraded',
-    database: databaseConnected ? 'connected' : 'unavailable',
-    timestamp: new Date().toISOString(),
-  });
+app.get(['/health', '/api/health'], async (req, res) => {
+  try {
+    await connectDB();
+    res.json({
+      success: true,
+      status: 'ok',
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error(`[HEALTH] MongoDB connection failed: ${error.name}${error.code ? ` (${error.code})` : ''}`);
+    res.status(503).json({
+      success: false,
+      status: 'degraded',
+      database: 'unavailable',
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // API Routes

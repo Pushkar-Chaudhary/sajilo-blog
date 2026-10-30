@@ -16,7 +16,8 @@ export const config = {
   geminiModel: process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite',
   jwtSecret: process.env.JWT_SECRET || '',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  frontendUrl: process.env.FRONTEND_URL ||
+    (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5173'),
   adminEmail: process.env.ADMIN_EMAIL || '',
   adminPassword: process.env.ADMIN_PASSWORD || '',
   adminName: process.env.ADMIN_NAME || 'Admin',
@@ -24,9 +25,6 @@ export const config = {
 
 export function validateEnv() {
   const required = ['MONGODB_URI', 'JWT_SECRET'];
-  if (process.env.NODE_ENV === 'production') {
-    required.push('FRONTEND_URL', 'BLOB_READ_WRITE_TOKEN');
-  }
   const missing = required.filter((key) => !process.env[key]);
   if (missing.length > 0) {
     console.error(`[ENV] Missing required environment variables: ${missing.join(', ')}`);
@@ -39,14 +37,15 @@ export function validateEnv() {
     process.exit(1);
   }
 
-  try {
-    const frontendUrl = new URL(config.frontendUrl);
-    if (config.nodeEnv === 'production' && frontendUrl.protocol !== 'https:') {
-      throw new Error('Production FRONTEND_URL must use HTTPS.');
+  if (process.env.FRONTEND_URL) {
+    try {
+      const frontendUrl = new URL(config.frontendUrl);
+      if (config.nodeEnv === 'production' && frontendUrl.protocol !== 'https:') {
+        throw new Error('Production FRONTEND_URL must use HTTPS.');
+      }
+    } catch (error) {
+      console.error(`[ENV] Invalid FRONTEND_URL: ${error.message}`);
+      process.exit(1);
     }
-  } catch (error) {
-    console.error(`[ENV] Invalid FRONTEND_URL: ${error.message}`);
-    process.exit(1);
   }
-
 }

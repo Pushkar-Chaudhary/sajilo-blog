@@ -37,16 +37,18 @@ The API starts even when MongoDB is temporarily unreachable, but story, auth, an
 
 ## Deploy to Vercel
 
-Deploy this repository from its **root directory** so the root `vercel.json` can build both the static frontend and the API function. Add these environment variables to the Vercel project for every environment you will use:
+Use one Vercel project for both the frontend and API. In the Vercel project's **Root Directory**, choose the repository root (the folder containing this README and the root `vercel.json`), not `sajilo-blog` or `server`. The root `vercel.json` builds the Vite frontend and routes `/api/*` to the Express function.
+
+Configure these variables in the Vercel project for each environment you deploy:
 
 - `MONGODB_URI`: production MongoDB connection string, with database/network access configured for Vercel.
 - `JWT_SECRET`: unique random secret, at least 32 characters.
-- `FRONTEND_URL`: the production HTTPS site origin (for example `https://your-domain.example`).
-- `BLOB_READ_WRITE_TOKEN`: provision a Vercel Blob store for persistent profile and article images.
+- `FRONTEND_URL`: optional production HTTPS site origin; needed only if the frontend uses a different origin from the API.
+- `BLOB_READ_WRITE_TOKEN`: optional; provision a Vercel Blob store to enable persistent image uploads. Without it, the API and stories still work, but uploads return a configuration error.
 - `GEMINI_API_KEY`: server-only Google Gemini API key for AI drafting and rewriting. Never expose it as a `VITE_*` variable.
 - `GEMINI_MODEL`: optional Gemini model ID; defaults to `gemini-flash-latest`.
 - `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and optionally `ADMIN_NAME`: credentials for the initial admin account.
 
 Run `npm run seed` against the production database once before using the admin account. Never commit `.env` or place server secrets in `VITE_*` variables. Same-origin API requests are used by default; set `VITE_API_URL` only when the API is deployed on a different origin, and configure `FRONTEND_URL` to match.
 
-`npm run build` builds the frontend and syntax-checks the backend. Vercel deployment still requires the production environment variables and provisioned database/blob services above.
+After deploying, verify that `/` serves the frontend and `/api/health` returns JSON with `"database": "connected"`. If the health endpoint reports the database as unavailable, check the Vercel Function logs and MongoDB Atlas network access. `npm run build` builds the frontend and syntax-checks the backend.
