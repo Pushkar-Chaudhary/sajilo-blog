@@ -4,7 +4,10 @@
     {
       "src": "sajilo-blog/package.json",
       "use": "@vercel/static-build",
-      "config": { "distDir": "dist" }
+      "config": {
+        "distDir": "dist",
+        "routePrefix": "/"
+      }
     },
     {
       "src": "server/server.js",
